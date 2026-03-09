@@ -11,19 +11,26 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import dj_database_url
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# .env 파일 직접 읽기
-env_file = BASE_DIR / '.env'
+# .env 파일 경로 직접 읽기 (17-29번째 줄 부근)
+env_file = BASE_DIR.parent / '.env'
+ANTHROPIC_API_KEY = None  # 초기화
+
 if env_file.exists():
-    with open(env_file) as f:
+    with open(env_file, encoding='utf-8-sig') as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith('#') and '=' in line:
                 key, value = line.split('=', 1)
-                os.environ.setdefault(key, value)
+                os.environ[key] = value
+                # ANTHROPIC_API_KEY는 따로 저장
+                if key == 'ANTHROPIC_API_KEY':
+                    ANTHROPIC_API_KEY = value
+                print(f"Set {key} = {value[:20]}...")
 
 # 확인
 print(f"ANTHROPIC_API_KEY loaded: {os.getenv('ANTHROPIC_API_KEY') is not None}")
@@ -40,9 +47,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = [
-    host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost").split(",") if host.strip()
-]
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -55,6 +60,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework.authtoken',
     'corsheaders',
     'roadmaps',
     'users',
@@ -62,6 +68,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -94,16 +101,16 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-        'USER': os.getenv('POSTGRES_USER', 'postgres'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', ''),
-        'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
-        'PORT': os.getenv('POSTGRES_PORT', '5432'),
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    DATABASES = {'default': dj_database_url.config(default=DATABASE_URL, conn_max_age=600)}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
 
 
 # Password validation
@@ -141,6 +148,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -149,6 +158,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -156,15 +166,19 @@ REST_FRAMEWORK = {
     ],
 }
 
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-]
+_cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000')
+CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
 
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:3000',
-]
+CORS_ALLOW_CREDENTIALS = True
 
+_csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:3000')
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(',') if o.strip()]
 
-# 환경변수도 설정
-os.environ['ANTHROPIC_API_KEY'] = ANTHROPIC_API_KEY
+# Anthropic API Key 설정
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+
+# 확인 로그 (개발용)
+if ANTHROPIC_API_KEY:
+    print(f"✅ ANTHROPIC_API_KEY loaded successfully")
+else:
+    print(f"❌ ANTHROPIC_API_KEY not found!")

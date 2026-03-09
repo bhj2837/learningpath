@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "cd backend && python manage.py migrate && gunicorn config.wsgi --log-file -"
+healthcheckPath = "/api/roadmaps/roadmaps/"
+restartPolicyType = "on_failure"
