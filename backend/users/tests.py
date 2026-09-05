@@ -1,10 +1,19 @@
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 
-class RegisterTests(APITestCase):
+class ThrottleResetMixin:
+    """스로틀 카운터는 캐시에 남아 테스트 간에 누적되므로 매번 비운다."""
+
+    def setUp(self):
+        cache.clear()
+        super().setUp()
+
+
+class RegisterTests(ThrottleResetMixin, APITestCase):
     URL = "/api/users/register/"
 
     def test_register_success(self):
@@ -43,8 +52,9 @@ class RegisterTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
 
-class LoginLogoutTests(APITestCase):
+class LoginLogoutTests(ThrottleResetMixin, APITestCase):
     def setUp(self):
+        super().setUp()
         self.password = "Str0ng!passw0rd"
         self.user = User.objects.create_user(username="tester", password=self.password)
 
@@ -81,7 +91,7 @@ class LoginLogoutTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
 
-class ProfileTests(APITestCase):
+class ProfileTests(ThrottleResetMixin, APITestCase):
     def test_profile_requires_auth(self):
         res = self.client.get("/api/users/profile/")
         self.assertIn(
