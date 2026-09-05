@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Checklist, Progress, Roadmap, Week
+from .models import Checklist, Roadmap, Week
 
 
 class OwnedRelationMixin:
@@ -50,19 +50,8 @@ class WeekSerializer(OwnedRelationMixin, serializers.ModelSerializer):
         read_only_fields = ("id",)
 
 
-class ProgressSerializer(OwnedRelationMixin, serializers.ModelSerializer):
-    owner_field = "roadmap"
-    owner_path = "user"
-
-    class Meta:
-        model = Progress
-        fields = "__all__"
-        read_only_fields = ("id",)
-
-
 class RoadmapSerializer(serializers.ModelSerializer):
     weeks = WeekSerializer(many=True, read_only=True)
-    progress = ProgressSerializer(many=True, read_only=True)
     total_checklists = serializers.SerializerMethodField()
     completed_checklists = serializers.SerializerMethodField()
 

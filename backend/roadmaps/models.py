@@ -1,5 +1,5 @@
 from django.contrib.auth.models import User
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -9,16 +9,34 @@ class Roadmap(models.Model):
         ("completed", "완료"),
         ("paused", "일시중지"),
     ]
+    # ⚠️ 아래 두 목록은 frontend/lib/constants.js와 반드시 일치시킬 것.
+    CATEGORY_CHOICES = [
+        ("개발", "개발"),
+        ("디자인", "디자인"),
+        ("언어", "언어"),
+        ("비즈니스", "비즈니스"),
+        ("기타", "기타"),
+    ]
+    LEVEL_CHOICES = [
+        ("입문", "입문"),
+        ("초급", "초급"),
+        ("중급", "중급"),
+        ("고급", "고급"),
+    ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="roadmaps")
     title = models.CharField(max_length=200)
     goal = models.TextField()
-    category = models.CharField(max_length=50)
-    duration_weeks = models.IntegerField(validators=[MinValueValidator(1)])
-    daily_hours = models.DecimalField(
-        max_digits=4, decimal_places=2, validators=[MinValueValidator(0)]
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
+    duration_weeks = models.IntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(52)]
     )
-    current_level = models.CharField(max_length=50)
+    daily_hours = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(24)],
+    )
+    current_level = models.CharField(max_length=50, choices=LEVEL_CHOICES)
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="in_progress"
     )
@@ -67,25 +85,3 @@ class Checklist(models.Model):
 
     def __str__(self) -> str:
         return self.content
-
-
-class Progress(models.Model):
-    roadmap = models.ForeignKey(
-        Roadmap, on_delete=models.CASCADE, related_name="progress"
-    )
-    date = models.DateField()
-    hours_studied = models.DecimalField(
-        max_digits=4, decimal_places=2, validators=[MinValueValidator(0)]
-    )
-    notes = models.TextField(blank=True)
-
-    class Meta:
-        ordering = ["-date"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["roadmap", "date"], name="unique_progress_per_day"
-            )
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.roadmap.title} - {self.date}"

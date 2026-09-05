@@ -9,13 +9,8 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import Checklist, Progress, Roadmap, Week
-from .serializers import (
-    ChecklistSerializer,
-    ProgressSerializer,
-    RoadmapSerializer,
-    WeekSerializer,
-)
+from .models import Checklist, Roadmap, Week
+from .serializers import ChecklistSerializer, RoadmapSerializer, WeekSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +18,12 @@ logger = logging.getLogger(__name__)
 MIN_WEEKS, MAX_WEEKS = 1, 16
 MIN_DAILY_HOURS, MAX_DAILY_HOURS = 0.5, 12
 MAX_GOAL_LENGTH = 500
+
+VALID_CATEGORIES = {value for value, _ in Roadmap.CATEGORY_CHOICES}
+VALID_LEVELS = {value for value, _ in Roadmap.LEVEL_CHOICES}
+
+# 프론트가 렌더링할 수 있는 자료 형태 (roadmaps/[id] 페이지 기준)
+RESOURCE_TYPES = {"video", "article", "course", "book", "docs"}
 
 PROMPT_TEMPLATE = """당신은 학습 로드맵 전문가입니다.
 아래 정보를 바탕으로 상세한 학습 로드맵을 JSON 형식으로 생성해주세요.
@@ -87,9 +88,8 @@ class RoadmapViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # 중첩 직렬화(weeks → checklists)로 인한 N+1 쿼리 방지
-        return (
-            Roadmap.objects.filter(user=self.request.user)
-            .prefetch_related("weeks__checklists", "progress")
+        return Roadmap.objects.filter(user=self.request.user).prefetch_related(
+            "weeks__checklists"
         )
 
     def get_throttles(self):
@@ -155,6 +155,12 @@ class RoadmapViewSet(viewsets.ModelViewSet):
             return None, "goal과 category는 필수입니다."
         if len(goal) > MAX_GOAL_LENGTH:
             return None, f"학습 목표는 {MAX_GOAL_LENGTH}자 이내로 입력해주세요."
+        if category not in VALID_CATEGORIES:
+            return None, f"카테고리는 {', '.join(sorted(VALID_CATEGORIES))} 중 하나여야 합니다."
+
+        current_level = (data.get("current_level") or "초급").strip()
+        if current_level not in VALID_LEVELS:
+            return None, f"현재 수준은 {', '.join(sorted(VALID_LEVELS))} 중 하나여야 합니다."
 
         try:
             duration_weeks = int(data.get("duration_weeks", 12))
@@ -174,8 +180,43 @@ class RoadmapViewSet(viewsets.ModelViewSet):
             "category": category,
             "duration_weeks": duration_weeks,
             "daily_hours": daily_hours,
-            "current_level": (data.get("current_level") or "초급").strip(),
+            "current_level": current_level,
         }, None
+
+    @staticmethod
+    def _normalize_resources(raw):
+        """
+        AI가 돌려준 학습 자료를 프론트가 렌더링할 수 있는 형태로 정규화한다.
+
+        모델이 문자열 배열이나 키가 빠진 객체를 반환해도 상세 페이지가
+        깨지지 않도록, 여기서 {title, url, type} 형태로 맞춘다.
+        """
+        if not isinstance(raw, list):
+            return []
+
+        normalized = []
+        for item in raw:
+            if isinstance(item, str):
+                title, url, type_ = item.strip(), "", "docs"
+            elif isinstance(item, dict):
+                title = str(item.get("title") or item.get("name") or "").strip()
+                url = str(item.get("url") or "").strip()
+                type_ = str(item.get("type") or "docs").strip().lower()
+            else:
+                continue
+
+            if not title:
+                continue
+            if not url.startswith(("http://", "https://")):
+                url = ""
+            normalized.append(
+                {
+                    "title": title[:200],
+                    "url": url,
+                    "type": type_ if type_ in RESOURCE_TYPES else "docs",
+                }
+            )
+        return normalized
 
     @staticmethod
     @transaction.atomic
@@ -203,14 +244,15 @@ class RoadmapViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 estimated_hours = 10
 
-            resources = week_data.get("resources")
             week = Week.objects.create(
                 roadmap=roadmap,
                 week_number=week_number,
-                title=week_data.get("title", ""),
+                title=str(week_data.get("title", ""))[:200],
                 description=week_data.get("description", ""),
                 estimated_hours=estimated_hours,
-                resources=resources if isinstance(resources, list) else [],
+                resources=RoadmapViewSet._normalize_resources(
+                    week_data.get("resources")
+                ),
                 project_suggestion=week_data.get("project_suggestion", ""),
             )
 
@@ -246,10 +288,3 @@ class ChecklistViewSet(OwnedByUserMixin, viewsets.ModelViewSet):
         checklist.save(update_fields=["is_completed", "completed_at"])
         serializer = self.get_serializer(checklist)
         return Response(serializer.data)
-
-
-class ProgressViewSet(OwnedByUserMixin, viewsets.ModelViewSet):
-    queryset = Progress.objects.all()
-    serializer_class = ProgressSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    owner_lookup = "roadmap__user"

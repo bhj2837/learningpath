@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Checklist, Progress, Roadmap, Week
+from .models import Checklist, Roadmap, Week
 
 
 @admin.register(Roadmap)
@@ -44,16 +44,3 @@ class ChecklistAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_completed", "completed_at")
     search_fields = ("content", "week__title", "week__roadmap__title")
-
-
-@admin.register(Progress)
-class ProgressAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "roadmap",
-        "date",
-        "hours_studied",
-        "notes",
-    )
-    list_filter = ("date", "roadmap__title")
-    search_fields = ("notes", "roadmap__title")

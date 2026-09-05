@@ -164,6 +164,9 @@ REST_FRAMEWORK = {
         'roadmap_generate': os.getenv('THROTTLE_GENERATE', '10/hour'),
         'auth': os.getenv('THROTTLE_AUTH', '20/hour'),
     },
+    # 프론트(lib/api.js)는 배열과 {results: [...]} 양쪽을 모두 처리한다.
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
 }
 
 
