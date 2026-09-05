@@ -14,7 +14,7 @@
 
 목표와 기간만 입력하면 **30초 만에** 주차별 학습 계획, 추천 자료, 실습 프로젝트를 자동 생성
 
-[**라이브 데모 →**](https://learningpath.vercel.app) &nbsp;·&nbsp; [**백엔드 API →**](https://learningpath.up.railway.app)
+> 데모 배포는 현재 내려가 있습니다. 아래 스크린샷과 로컬 실행 방법을 참고해 주세요.
 
 </div>
 
