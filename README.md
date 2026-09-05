@@ -95,10 +95,11 @@ python manage.py migrate
 python manage.py runserver   # http://localhost:8000
 ```
 
-### 테스트
+### 테스트 · 린트
 ```bash
 cd backend
-python manage.py test
+python manage.py test        # 34개 (IDOR·입력검증·인증·저장 회귀)
+pip install ruff && ruff check .
 ```
 
 ### 3. 프론트엔드 실행
@@ -106,6 +107,7 @@ python manage.py test
 cd frontend
 npm install
 npm run dev                  # http://localhost:3000
+npm run lint
 ```
 
 ---
@@ -121,8 +123,11 @@ npm run dev                  # http://localhost:3000
 | `GET` | `/api/roadmaps/roadmaps/` | 내 로드맵 목록 |
 | `POST` | `/api/roadmaps/roadmaps/generate/` | ⭐ AI 로드맵 생성 (10회/시간) |
 | `GET` | `/api/roadmaps/roadmaps/{id}/` | 로드맵 상세 |
-| `DELETE` | `/api/roadmaps/roadmaps/{id}/` | 로드맵 삭제 |
+| `PATCH` | `/api/roadmaps/roadmaps/{id}/` | 로드맵 수정 (상태 변경 등) |
+| `DELETE` | `/api/roadmaps/roadmaps/{id}/` | 로드맵 삭제 (주차·체크리스트 함께 삭제) |
 | `POST` | `/api/roadmaps/checklists/{id}/toggle_complete/` | 체크리스트 토글 |
+
+목록 응답은 `PageNumberPagination`(20건)이 적용되어 `{count, next, previous, results}` 형태입니다.
 
 > 🔒 모든 `/api/` 엔드포인트는 **요청한 사용자가 소유한 데이터만** 반환합니다.
 > 남의 리소스 ID로 접근하면 `404`, 남의 로드맵을 FK로 지정해 쓰기를 시도하면 `400`이 반환됩니다.
@@ -148,30 +153,37 @@ Authorization: Token your_token_here
 
 ```
 learningpath/
-├── .github/workflows/ci.yml  # 인코딩·시크릿·테스트 회귀 방지 CI
+├── .github/workflows/ci.yml  # 인코딩·시크릿·린트·테스트 회귀 방지 CI
+├── .editorconfig             # UTF-8 / LF 고정 (UTF-16 사고 재발 방지)
 ├── .env.example              # 환경변수 템플릿 (.env는 커밋 금지)
 ├── backend/                  # Django 백엔드
 │   ├── config/
 │   │   ├── settings.py       # 프로젝트 설정
 │   │   └── urls.py           # 메인 URL + /healthz/
 │   ├── roadmaps/
-│   │   ├── models.py         # Roadmap, Week, Checklist, Progress
-│   │   ├── views.py          # 소유자 필터 믹스인 + AI 생성 로직
+│   │   ├── models.py         # Roadmap, Week, Checklist
+│   │   ├── views.py          # 소유자 필터 믹스인 + AI 생성/응답 정규화
 │   │   ├── serializers.py    # FK 소유권 검증
 │   │   └── tests.py          # IDOR·입력검증·저장 회귀 테스트
 │   ├── users/
 │   │   ├── views.py          # 인증 API
 │   │   └── tests.py
 │   ├── Procfile              # Railway 배포 설정
+│   ├── pyproject.toml        # ruff 설정
 │   └── requirements.txt
 ├── frontend/                 # Next.js 프론트엔드
 │   ├── app/
+│   │   ├── components/
+│   │   │   └── Header.js     # AppHeader / BackHeader 공용 헤더
 │   │   ├── page.js           # 랜딩 페이지
 │   │   ├── auth/page.js      # 로그인/회원가입
 │   │   ├── dashboard/page.js # 로드맵 목록
 │   │   ├── create/page.js    # 로드맵 생성
 │   │   └── roadmaps/[id]/    # 상세 페이지
-│   └── lib/api.js            # API 클라이언트 (ApiError, clearSession)
+│   └── lib/
+│       ├── api.js            # API 클라이언트 (ApiError, clearSession)
+│       ├── constants.js      # 카테고리·수준·상태 (백엔드와 동기화 필요)
+│       └── useAuth.js        # useRequireAuth / useIsLoggedIn
 ├── screenshots/              # 스크린샷
 └── README.md
 ```
