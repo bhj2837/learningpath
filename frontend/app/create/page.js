@@ -1,38 +1,30 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { api, clearSession } from '@/lib/api'
-
-const CATEGORIES = ['개발', '디자인', '언어', '비즈니스', '기타']
-const DURATIONS = [2, 4, 6, 8, 12, 16]
-const DAILY_HOURS = [0.5, 1, 1.5, 2, 3, 4]
-const LEVELS = ['입문', '초급', '중급', '고급']
-
-const GOAL_EXAMPLES = [
-  'React로 웹 개발 시작하기',
-  'Python으로 데이터 분석 배우기',
-  '영어 비즈니스 회화 마스터',
-  'UI/UX 디자인 기초 익히기',
-  'Django로 백엔드 API 개발',
-]
+import { api } from '@/lib/api'
+import { BackHeader } from '@/app/components/Header'
+import {
+  CATEGORIES,
+  DAILY_HOURS,
+  DURATION,
+  GOAL_EXAMPLES,
+  LEVELS,
+} from '@/lib/constants'
+import { useRequireAuth } from '@/lib/useAuth'
 
 export default function CreatePage() {
   const router = useRouter()
+  const { checked, handleAuthError } = useRequireAuth()
   const [form, setForm] = useState({
     goal: '',
-    category: '개발',
+    category: CATEGORIES[0],
     duration_weeks: 4,
     daily_hours: 2,
-    current_level: '초급',
+    current_level: LEVELS[1],
   })
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (!localStorage.getItem('authToken')) router.push('/auth')
-  }, [router])
 
   // 로딩 중 메시지 순환
   useEffect(() => {
@@ -54,36 +46,40 @@ export default function CreatePage() {
     return () => clearInterval(interval)
   }, [loading])
 
+  const NUMERIC_FIELDS = ['duration_weeks', 'daily_hours']
+
   const handleChange = (e) => {
     const { name, value } = e.target
-    setForm({ ...form, [name]: ['duration_weeks'].includes(name) ? Number(value) : ['daily_hours'].includes(name) ? Number(value) : value })
+    setForm((prev) => ({
+      ...prev,
+      [name]: NUMERIC_FIELDS.includes(name) ? Number(value) : value,
+    }))
     setError('')
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!form.goal.trim()) { setError('학습 목표를 입력해주세요.'); return }
+    const goal = form.goal.trim()
+    if (!goal) { setError('학습 목표를 입력해주세요.'); return }
     setLoading(true)
     setError('')
     try {
-      const roadmap = await api.generateRoadmap(form)
+      const roadmap = await api.generateRoadmap({ ...form, goal })
       router.push(`/roadmaps/${roadmap.id}`)
     } catch (err) {
-      if (err.isAuthError) {
-        clearSession()
-        router.push('/auth')
-        return
-      }
+      if (handleAuthError(err)) return
       setError(err.message || '로드맵 생성에 실패했습니다. 다시 시도해주세요.')
       setLoading(false)
     }
   }
 
+  if (!checked) return null
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center px-6">
-        <div className="text-center max-w-sm">
-          <div className="relative w-24 h-24 mx-auto mb-8">
+        <div role="status" aria-live="polite" className="text-center max-w-sm">
+          <div aria-hidden="true" className="relative w-24 h-24 mx-auto mb-8">
             <div className="absolute inset-0 rounded-full border-4 border-indigo-200" />
             <div className="absolute inset-0 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin" />
             <div className="absolute inset-0 flex items-center justify-center text-3xl">🤖</div>
@@ -92,7 +88,7 @@ export default function CreatePage() {
           <p className="text-gray-500 text-sm leading-relaxed mb-2">{loadingMsg}</p>
           <p className="text-xs text-gray-400">약 30초 정도 소요됩니다</p>
           <div className="mt-6 bg-white rounded-2xl p-4 border border-indigo-100">
-            <p className="text-sm text-gray-600 font-medium">"{form.goal}"</p>
+            <p className="text-sm text-gray-600 font-medium">&ldquo;{form.goal}&rdquo;</p>
             <div className="flex gap-2 mt-2 justify-center flex-wrap">
               <span className="badge bg-indigo-100 text-indigo-700">{form.category}</span>
               <span className="badge bg-purple-100 text-purple-700">{form.duration_weeks}주</span>
@@ -106,16 +102,7 @@ export default function CreatePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
-        <div className="max-w-3xl mx-auto px-6 h-16 flex items-center gap-4">
-          <Link href="/dashboard" className="text-gray-400 hover:text-gray-600 transition-colors">
-            ← 대시보드
-          </Link>
-          <div className="w-px h-5 bg-gray-200" />
-          <span className="font-semibold text-gray-900">새 학습 로드맵 생성</span>
-        </div>
-      </header>
+      <BackHeader title="새 학습 로드맵 생성" />
 
       <main className="max-w-3xl mx-auto px-6 py-10">
         <div className="mb-8">
@@ -126,16 +113,19 @@ export default function CreatePage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Goal */}
           <div className="card">
-            <label className="block text-sm font-semibold text-gray-700 mb-3">
-              🎯 학습 목표 <span className="text-red-400">*</span>
+            <label htmlFor="goal" className="block text-sm font-semibold text-gray-700 mb-3">
+              <span aria-hidden="true">🎯</span> 학습 목표{' '}
+              <span className="text-red-400" aria-hidden="true">*</span>
             </label>
             <textarea
+              id="goal"
               name="goal"
               value={form.goal}
               onChange={handleChange}
               placeholder="예: React를 배워서 웹 개발을 시작하고 싶어요"
               className="input-field resize-none"
               rows={3}
+              maxLength={500}
               required
             />
             <div className="flex flex-wrap gap-2 mt-3">
@@ -144,7 +134,7 @@ export default function CreatePage() {
                 <button
                   key={ex}
                   type="button"
-                  onClick={() => setForm({ ...form, goal: ex })}
+                  onClick={() => setForm((prev) => ({ ...prev, goal: ex }))}
                   className="text-xs bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-500 px-3 py-1.5 rounded-lg transition-colors"
                 >
                   {ex}
@@ -155,14 +145,17 @@ export default function CreatePage() {
 
           {/* Category & Level */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="card">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">📂 카테고리</label>
+            <fieldset className="card">
+              <legend className="text-sm font-semibold text-gray-700 mb-3">
+                <span aria-hidden="true">📂</span> 카테고리
+              </legend>
               <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map((cat) => (
                   <button
                     key={cat}
                     type="button"
-                    onClick={() => setForm({ ...form, category: cat })}
+                    aria-pressed={form.category === cat}
+                    onClick={() => setForm((prev) => ({ ...prev, category: cat }))}
                     className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                       form.category === cat
                         ? 'bg-indigo-600 text-white'
@@ -173,16 +166,19 @@ export default function CreatePage() {
                   </button>
                 ))}
               </div>
-            </div>
+            </fieldset>
 
-            <div className="card">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">📊 현재 수준</label>
+            <fieldset className="card">
+              <legend className="text-sm font-semibold text-gray-700 mb-3">
+                <span aria-hidden="true">📊</span> 현재 수준
+              </legend>
               <div className="flex flex-wrap gap-2">
                 {LEVELS.map((level) => (
                   <button
                     key={level}
                     type="button"
-                    onClick={() => setForm({ ...form, current_level: level })}
+                    aria-pressed={form.current_level === level}
+                    onClick={() => setForm((prev) => ({ ...prev, current_level: level }))}
                     className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                       form.current_level === level
                         ? 'bg-indigo-600 text-white'
@@ -193,48 +189,52 @@ export default function CreatePage() {
                   </button>
                 ))}
               </div>
-            </div>
+            </fieldset>
           </div>
 
           {/* Duration & Hours */}
           <div className="grid grid-cols-2 gap-4">
             <div className="card">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">
-                📅 총 학습 기간: <span className="text-indigo-600">{form.duration_weeks}주</span>
+              <label htmlFor="duration_weeks" className="block text-sm font-semibold text-gray-700 mb-3">
+                <span aria-hidden="true">📅</span> 총 학습 기간:{' '}
+                <span className="text-indigo-600">{form.duration_weeks}주</span>
               </label>
               <input
+                id="duration_weeks"
                 type="range"
                 name="duration_weeks"
-                min="2"
-                max="16"
-                step="2"
+                min={DURATION.min}
+                max={DURATION.max}
+                step={DURATION.step}
                 value={form.duration_weeks}
                 onChange={handleChange}
                 className="w-full accent-indigo-600"
               />
               <div className="flex justify-between text-xs text-gray-400 mt-1">
-                <span>2주</span>
-                <span>16주</span>
+                <span>{DURATION.min}주</span>
+                <span>{DURATION.max}주</span>
               </div>
             </div>
 
             <div className="card">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">
-                ⏱ 하루 학습 시간: <span className="text-indigo-600">{form.daily_hours}시간</span>
+              <label htmlFor="daily_hours" className="block text-sm font-semibold text-gray-700 mb-3">
+                <span aria-hidden="true">⏱</span> 하루 학습 시간:{' '}
+                <span className="text-indigo-600">{form.daily_hours}시간</span>
               </label>
               <input
+                id="daily_hours"
                 type="range"
                 name="daily_hours"
-                min="0.5"
-                max="4"
-                step="0.5"
+                min={DAILY_HOURS.min}
+                max={DAILY_HOURS.max}
+                step={DAILY_HOURS.step}
                 value={form.daily_hours}
                 onChange={handleChange}
                 className="w-full accent-indigo-600"
               />
               <div className="flex justify-between text-xs text-gray-400 mt-1">
-                <span>0.5시간</span>
-                <span>4시간</span>
+                <span>{DAILY_HOURS.min}시간</span>
+                <span>{DAILY_HOURS.max}시간</span>
               </div>
             </div>
           </div>
@@ -257,7 +257,9 @@ export default function CreatePage() {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm">{error}</div>
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm">
+              {error}
+            </div>
           )}
 
           <button type="submit" className="btn-primary w-full py-4 text-base">
