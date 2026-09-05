@@ -2,6 +2,9 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "cd backend && python manage.py migrate && gunicorn config.wsgi --log-file -"
-healthcheckPath = "/api/roadmaps/roadmaps/"
+# AI 생성 요청이 최대 2분까지 걸리므로 gunicorn --timeout 120 과 맞춘다
+startCommand = "cd backend && python manage.py migrate --noinput && gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile -"
+# 인증이 필요 없는 경로여야 한다 (기존 /api/roadmaps/roadmaps/ 는 항상 401)
+healthcheckPath = "/healthz/"
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
