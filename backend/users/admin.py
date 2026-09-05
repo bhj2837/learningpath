@@ -1,3 +1,1 @@
-from django.contrib import admin
-
-# Register your models here.
+# users 앱은 자체 모델이 없어 등록할 항목이 없다.

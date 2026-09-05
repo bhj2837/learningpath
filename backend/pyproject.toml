@@ -1,0 +1,20 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["venv", "*/migrations/*"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "DJ",  # flake8-django
+]
+ignore = [
+    "B008",  # DRF/Django에서 기본 인자로 호출하는 관용구가 많다
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "roadmaps", "users"]

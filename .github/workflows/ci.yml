@@ -15,14 +15,23 @@ jobs:
 
       # 과거 .gitignore / requirements.txt 가 UTF-16으로 저장되어
       # 무시 규칙이 통째로 무효화되고 배포가 깨진 이력이 있다.
-      - name: 텍스트 설정 파일이 UTF-8인지 확인
+      # UTF-16/BOM은 Git이 "바이너리"로 취급해 조용히 넘어가므로 BOM 바이트를 직접 본다.
+      - name: 추적 파일에 UTF-16 / BOM이 없는지 확인
         run: |
-          for f in .gitignore backend/requirements.txt .env.example; do
-            if [ -f "$f" ] && ! iconv -f UTF-8 -t UTF-8 "$f" > /dev/null 2>&1; then
-              echo "::error file=$f::UTF-8이 아닙니다. PowerShell '>' 리다이렉트로 저장하지 마세요."
-              exit 1
-            fi
-          done
+          fail=0
+          while IFS= read -r f; do
+            case "$f" in
+              *.png|*.jpg|*.jpeg|*.gif|*.ico|*.pdf|*.woff|*.woff2) continue ;;
+            esac
+            bom=$(head -c 3 "$f" | od -An -tx1 | tr -d ' \n')
+            case "$bom" in
+              fffe*|feff*|efbbbf)
+                echo "::error file=$f::UTF-16 또는 BOM이 감지되었습니다. UTF-8(BOM 없음)로 저장하세요."
+                fail=1
+                ;;
+            esac
+          done < <(git ls-files)
+          exit $fail
 
       - name: 커밋되면 안 되는 파일 검사
         run: |
@@ -52,7 +61,11 @@ jobs:
 
       - name: 의존성 설치
         working-directory: backend
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt ruff
+
+      - name: 린트 (ruff)
+        working-directory: backend
+        run: ruff check .
 
       - name: 미적용 마이그레이션 확인
         working-directory: backend
@@ -89,6 +102,10 @@ jobs:
       - name: 의존성 설치
         working-directory: frontend
         run: npm ci
+
+      - name: 린트 (ESLint)
+        working-directory: frontend
+        run: npm run lint
 
       - name: 빌드
         working-directory: frontend

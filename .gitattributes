@@ -1,0 +1,10 @@
+# 모든 텍스트 파일을 저장소 안에서는 LF로 정규화한다.
+# (Windows/CI가 섞여 있어 CRLF가 들어오면 diff가 통째로 어긋난다.)
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary

@@ -1,0 +1,20 @@
+# 이 저장소는 과거에 .gitignore가 UTF-16LE로 저장되는 바람에 Git이 파싱하지 못해
+# venv와 .env가 통째로 커밋된 적이 있다. 재발 방지를 위해 인코딩을 고정한다.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.py]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
