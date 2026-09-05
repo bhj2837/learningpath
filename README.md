@@ -50,8 +50,8 @@
 | 영역 | 기술 |
 |------|------|
 | **Frontend** | Next.js 14 (App Router), Tailwind CSS |
-| **Backend** | Django 5.0, Django REST Framework |
-| **AI** | Anthropic Claude API (claude-3-haiku-20240307) |
+| **Backend** | Django 5.2, Django REST Framework |
+| **AI** | Anthropic Claude API (`ANTHROPIC_MODEL`, 기본 `claude-haiku-4-5`) |
 | **Database** | SQLite (개발) / PostgreSQL (운영) |
 | **인증** | DRF Token Authentication |
 | **배포** | Vercel (Frontend) + Railway (Backend) |
@@ -81,16 +81,24 @@ venv\Scripts\activate        # Windows
 pip install -r requirements.txt
 ```
 
-`.env` 파일 생성 (프로젝트 루트):
-```env
-ANTHROPIC_API_KEY=your_api_key_here
-DJANGO_SECRET_KEY=your_secret_key
-DEBUG=True
+`.env` 파일 생성 (프로젝트 루트). 템플릿을 복사해서 값만 채우면 됩니다:
+```bash
+cp ../.env.example ../.env
 ```
+
+> ⚠️ `.env`는 `.gitignore`에 등록되어 있습니다. **절대 커밋하지 마세요.**
+> 또한 `.gitignore`와 `requirements.txt`는 반드시 **UTF-8(BOM 없음)** 으로 저장해야 합니다.
+> PowerShell의 `>` 리다이렉트는 UTF-16으로 저장되어 Git과 pip가 파일을 읽지 못합니다.
 
 ```bash
 python manage.py migrate
 python manage.py runserver   # http://localhost:8000
+```
+
+### 테스트
+```bash
+cd backend
+python manage.py test
 ```
 
 ### 3. 프론트엔드 실행
@@ -106,14 +114,18 @@ npm run dev                  # http://localhost:3000
 
 | 메서드 | 엔드포인트 | 설명 |
 |--------|-----------|------|
-| `POST` | `/api/users/register/` | 회원가입 |
-| `POST` | `/api/users/login/` | 로그인 (토큰 반환) |
+| `GET` | `/healthz/` | 헬스체크 (인증 불필요, DB 연결 확인) |
+| `POST` | `/api/users/register/` | 회원가입 (비밀번호 검증기 적용, 20회/시간) |
+| `POST` | `/api/users/login/` | 로그인 (토큰 반환, 20회/시간) |
 | `POST` | `/api/users/logout/` | 로그아웃 |
 | `GET` | `/api/roadmaps/roadmaps/` | 내 로드맵 목록 |
-| `POST` | `/api/roadmaps/roadmaps/generate/` | ⭐ AI 로드맵 생성 |
+| `POST` | `/api/roadmaps/roadmaps/generate/` | ⭐ AI 로드맵 생성 (10회/시간) |
 | `GET` | `/api/roadmaps/roadmaps/{id}/` | 로드맵 상세 |
 | `DELETE` | `/api/roadmaps/roadmaps/{id}/` | 로드맵 삭제 |
 | `POST` | `/api/roadmaps/checklists/{id}/toggle_complete/` | 체크리스트 토글 |
+
+> 🔒 모든 `/api/` 엔드포인트는 **요청한 사용자가 소유한 데이터만** 반환합니다.
+> 남의 리소스 ID로 접근하면 `404`, 남의 로드맵을 FK로 지정해 쓰기를 시도하면 `400`이 반환됩니다.
 
 ### AI 로드맵 생성 예시
 
@@ -136,16 +148,20 @@ Authorization: Token your_token_here
 
 ```
 learningpath/
+├── .github/workflows/ci.yml  # 인코딩·시크릿·테스트 회귀 방지 CI
+├── .env.example              # 환경변수 템플릿 (.env는 커밋 금지)
 ├── backend/                  # Django 백엔드
 │   ├── config/
 │   │   ├── settings.py       # 프로젝트 설정
-│   │   └── urls.py           # 메인 URL
+│   │   └── urls.py           # 메인 URL + /healthz/
 │   ├── roadmaps/
 │   │   ├── models.py         # Roadmap, Week, Checklist, Progress
-│   │   ├── views.py          # AI 생성 로직 포함
-│   │   └── serializers.py
+│   │   ├── views.py          # 소유자 필터 믹스인 + AI 생성 로직
+│   │   ├── serializers.py    # FK 소유권 검증
+│   │   └── tests.py          # IDOR·입력검증·저장 회귀 테스트
 │   ├── users/
-│   │   └── views.py          # 인증 API
+│   │   ├── views.py          # 인증 API
+│   │   └── tests.py
 │   ├── Procfile              # Railway 배포 설정
 │   └── requirements.txt
 ├── frontend/                 # Next.js 프론트엔드
@@ -155,7 +171,7 @@ learningpath/
 │   │   ├── dashboard/page.js # 로드맵 목록
 │   │   ├── create/page.js    # 로드맵 생성
 │   │   └── roadmaps/[id]/    # 상세 페이지
-│   └── lib/api.js            # API 클라이언트
+│   └── lib/api.js            # API 클라이언트 (ApiError, clearSession)
 ├── screenshots/              # 스크린샷
 └── README.md
 ```
@@ -175,7 +191,12 @@ DJANGO_DEBUG=False
 ALLOWED_HOSTS=*.railway.app,your-domain.com
 DATABASE_URL=postgresql://...  (Railway 자동 제공)
 CORS_ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
+CSRF_TRUSTED_ORIGINS=https://your-vercel-app.vercel.app
 ```
+
+> `DJANGO_SECRET_KEY`가 없으면 `DJANGO_DEBUG=False` 환경에서 기동이 거부됩니다(의도된 안전장치).
+> 헬스체크 경로는 `/healthz/`입니다. 인증이 걸린 API 경로를 지정하면 항상 401이 되어 배포가 영구 unhealthy 상태가 됩니다.
+> AI 생성은 30초 안팎이 걸리므로 gunicorn `--timeout 120`을 유지하세요.
 
 ### Vercel (프론트엔드)
 환경변수 설정:
