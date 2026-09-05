@@ -1,132 +1,110 @@
-러닝패스(LearningPath) 프로젝트 - 전체 컨텍스트
+# 러닝패스(LearningPath) — 프로젝트 컨텍스트
 
-## 프로젝트 개요
-AI(Claude Haiku) 기반 개인 맞춤 학습 로드맵 자동 생성 플랫폼. 사용자가 목표, 기간, 수준을 입력하면 30초 만에 주차별 학습계획, 자료, 체크리스트를 자동 생성.
+## 개요
+Claude API 기반 개인 맞춤 학습 로드맵 자동 생성 플랫폼.
+목표·기간·수준을 입력하면 주차별 학습계획, 학습자료, 실습 프로젝트, 체크리스트를 자동 생성한다.
 
-## 개발 환경
-- OS: Windows 11
-- 에디터: Cursor AI
-- 터미널: Git Bash + PowerShell
-- 언어: Python 3.x
-- 프레임워크: Django 5.0 + Django REST Framework
-- DB: SQLite (개발용)
-- AI: Claude API (anthropic 패키지, claude-3-haiku-20240307 모델)
-- 버전 관리: Git + GitHub
+## 기술 스택
+- Backend: Python 3.11 / Django 5.2 / Django REST Framework
+- Frontend: Next.js 14 (App Router, JavaScript) / Tailwind CSS
+- DB: SQLite(개발) / PostgreSQL(운영, `DATABASE_URL`로 전환)
+- AI: Anthropic Claude API (`anthropic` 패키지)
+- 배포: Railway(백엔드) / Vercel(프론트엔드)
 
-## 프로젝트 구조
+## 디렉터리 구조
+```
 learningpath/
 ├── backend/
-│   ├── config/
-│   │   ├── settings.py (Django 설정, dotenv 로드 구현)
-│   │   ├── urls.py (메인 URL)
-│   │   └── wsgi.py
-│   ├── roadmaps/
-│   │   ├── models.py (4개 모델: Roadmap, Week, Checklist, Progress)
-│   │   ├── serializers.py (DRF Serializers)
-│   │   ├── views.py (ViewSets + generate 액션, ⚠️ API 키 하드코딩 있음)
-│   │   ├── urls.py (API 엔드포인트)
-│   │   └── admin.py (Admin 페이지 설정)
-│   ├── .env (환경변수: ANTHROPIC_API_KEY 포함, gitignore됨)
+│   ├── config/          # settings, urls, wsgi
+│   ├── roadmaps/        # Roadmap / Week / Checklist / Progress
+│   ├── users/           # 회원가입·로그인·프로필 (Token 인증)
 │   ├── manage.py
-│   ├── db.sqlite3 (테스트 데이터 3개)
-│   ├── venv/ (Python 가상환경)
+│   ├── Procfile
 │   └── requirements.txt
-├── .gitignore (.env, venv, *.pyc 등)
+├── frontend/
+│   ├── app/             # /, /auth, /create, /dashboard, /roadmaps/[id]
+│   └── lib/api.js       # API 클라이언트
+├── .env.example         # 환경변수 템플릿 (실제 .env는 커밋 금지)
+├── railway.toml
 └── README.md
+```
 
-## 설치된 주요 패키지
-Django==5.0.x, djangorestframework, django-cors-headers, python-dotenv, anthropic, psycopg2-binary
+## 데이터 모델
+| 모델 | 주요 필드 |
+|---|---|
+| `Roadmap` | user(FK), title, goal, category, duration_weeks, daily_hours, current_level, status |
+| `Week` | roadmap(FK), week_number, title, description, estimated_hours, resources(JSON), project_suggestion |
+| `Checklist` | week(FK), content, is_completed, completed_at |
+| `Progress` | roadmap(FK), date, hours_studied, notes |
 
-## 데이터 모델 (4개)
-
-1. Roadmap: user(FK), title, goal, category(개발/디자인/언어), duration_weeks, daily_hours, current_level, status(in_progress/completed/paused), created_at, updated_at
-
-2. Week: roadmap(FK), week_number, title, description, estimated_hours, resources(JSONField: [{title, url, type}]), project_suggestion
-
-3. Checklist: week(FK), content, is_completed(default=False), completed_at(nullable)
-
-4. Progress: roadmap(FK), date, hours_studied, notes
+`Week`는 `(roadmap, week_number)`, `Progress`는 `(roadmap, date)` 유니크 제약이 걸려 있다.
 
 ## API 엔드포인트
-- GET/POST /api/roadmaps/roadmaps/
-- GET/PUT/DELETE /api/roadmaps/roadmaps/{id}/
-- POST /api/roadmaps/roadmaps/generate/ (⭐ AI 생성)
+```
+POST   /api/users/register/                          회원가입 (인증 불필요)
+POST   /api/users/login/                             로그인 (인증 불필요)
+POST   /api/users/logout/
+GET    /api/users/profile/
 
-generate 입력 예시:
-{
-  "goal": "React 배우기",
-  "category": "개발",
-  "duration_weeks": 4,
-  "daily_hours": 2,
-  "current_level": "초급"
-}
+GET    /api/roadmaps/roadmaps/                       내 로드맵 목록
+POST   /api/roadmaps/roadmaps/generate/              AI 로드맵 생성 (throttle: 10/시간)
+GET    /api/roadmaps/roadmaps/{id}/
+PATCH  /api/roadmaps/roadmaps/{id}/
+DELETE /api/roadmaps/roadmaps/{id}/
 
-## Claude API 연동 (views.py의 generate 메서드)
-- @action(detail=False, methods=['post']) 데코레이터 사용
-- ⚠️ 현재 문제: API_KEY = "***REVOKED-API-KEY-REMOVED***" 하드코딩됨
-- ✅ 수정 필요: client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-- 프롬프트: "당신은 학습 로드맵 전문가입니다" + 사용자 입력 정보 → JSON 생성 요청
-- 응답 파싱 후 Roadmap, Week, Checklist 객체 자동 생성
+POST   /api/roadmaps/checklists/{id}/toggle_complete/
 
-## 환경변수 (.env 파일, 위치: backend/.env)
-ANTHROPIC_API_KEY=***REVOKED-API-KEY-REMOVED***
-DJANGO_SECRET_KEY=dev-secret-key
-DEBUG=True
+GET    /healthz/                                     헬스체크 (인증 불필요)
+```
 
-## 완료된 작업 (60%)
-✅ Django 프로젝트 구조 완성
-✅ 4개 모델 설계 및 마이그레이션
-✅ Admin 페이지 설정 (슈퍼유저: admin/***REMOVED***)
-✅ REST API 구축 (ModelViewSet, Serializers)
-✅ CORS 설정
-✅ Claude API 연동 (generate 엔드포인트)
-✅ 프롬프트 엔지니어링
-✅ JSON 파싱 및 DB 저장 로직
-✅ 테스트 성공: "React 배우기" 입력 시 4주차 커리큘럼 생성 (HTTP 201, 4개 Week, 12개 Checklist, 실제 URL 학습자료, 프로젝트 제안 포함)
+모든 `roadmaps` 계열 ViewSet은 **요청자 소유 데이터만** 반환하도록 `get_queryset()`에서 필터링한다.
+신규 ViewSet 추가 시 이 규칙을 반드시 지킬 것.
 
-해결한 문제:
-- python-dotenv 로드 실패 → settings.py에서 직접 .env 파일 읽기
-- Claude API 404 에러 → test_claude.py로 모델 테스트, claude-3-haiku-20240307만 작동 확인
-- API 키 인증 실패 → 하드코딩으로 임시 해결 (⚠️ 현재 문제)
+## 환경변수
+`.env.example`를 복사해 `.env`를 만들고 값을 채운다. **`.env`는 절대 커밋하지 않는다.**
 
-## ⚠️ 현재 상태: Git Push 차단됨
-- git push origin main 시 GitHub Secret Scanning이 코드 내 하드코딩된 API 키 감지
-- Push 자동 차단 (코드는 GitHub에 올라가지 않음, API 키 노출 안 됨)
-- 감지된 파일: backend/config/settings.py:169, backend/roadmaps/views.py:46
+| 변수 | 필수 | 설명 |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | ✅ | Anthropic 콘솔에서 발급 |
+| `DJANGO_SECRET_KEY` | 운영 필수 | `DJANGO_DEBUG=False`면 미설정 시 기동 실패 |
+| `DJANGO_DEBUG` | | 기본값 `False`. 로컬에서만 `True` |
+| `ALLOWED_HOSTS` | 운영 필수 | 쉼표 구분 |
+| `CORS_ALLOWED_ORIGINS` | | 쉼표 구분 |
+| `DATABASE_URL` | | 미설정 시 SQLite |
+| `ANTHROPIC_MODEL` | | 기본값 `claude-haiku-4-5` |
 
-해야 할 것:
-1. backend/roadmaps/views.py: API_KEY = "sk-ant-..." 삭제, client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))로 변경
-2. backend/config/settings.py: 하드코딩된 ANTHROPIC_API_KEY 줄 삭제
-3. .gitignore 확인 (*.env, backend/.env 포함)
-4. git add . → git commit -m "refactor: API 키 환경변수로 변경" → git push origin main
+프론트엔드는 `NEXT_PUBLIC_API_URL`로 백엔드 주소를 지정한다.
 
-## 미완료 작업 (40%)
-Frontend (Next.js): 프로젝트 생성, 홈 페이지, 로드맵 생성/목록/상세 페이지, API 연동, UI/UX
-통합 & 배포: Frontend-Backend 연동 테스트, 배포 준비
-
-## 테스트 결과 (성공 사례)
-입력: POST /api/roadmaps/roadmaps/generate/
-{"goal": "React 배우기", "category": "개발", "duration_weeks": 4, "daily_hours": 2, "current_level": "초급"}
-
-출력: {"id": 3, "title": "React 배우기", "weeks": [{"week_number": 1, "title": "React 기초 이해하기", "description": "...", "estimated_hours": 10, "resources": [{"title": "React 공식 문서", "url": "https://reactjs.org/docs/getting-started.html", "type": "text"}], "project_suggestion": "간단한 Counter 앱", "checklists": [{"content": "React 기본 개념 이해", "is_completed": false}, ...]}]} (4주차까지)
-
-## 서버 실행
-cd C:\Users\user\Documents\learningpath\backend
-venv\Scripts\activate
+## 로컬 실행
+```bash
+# 백엔드
+cd backend
+python -m venv venv && source venv/Scripts/activate   # Windows Git Bash
+pip install -r requirements.txt
+python manage.py migrate
 python manage.py runserver
-브라우저: http://localhost:8000/api/roadmaps/roadmaps/
 
-## Git 정보
-로컬: C:\Users\user\Documents\learningpath
-리모트: https://github.com/bhj2837/learningpath.git
-브랜치: main
+# 프론트엔드
+cd frontend
+npm install
+npm run dev
+```
 
-## 다음 할 일
-1순위 (5분): views.py, settings.py에서 API 키 하드코딩 제거 → git push
-2순위 (3-4시간): Next.js Frontend 개발
+## 테스트
+```bash
+cd backend && python manage.py test
+```
 
-## 중요 정보
-- API 키는 .env에만 존재 (노출 안 됨)
-- Free tier: claude-3-haiku-20240307만 가능
-- 로드맵 생성: 약 30초
-- 테스트 데이터: 3개 Roadmap
+## ⚠️ 이 저장소의 주의사항 (과거 사고 이력)
+
+1. **`.gitignore` / `requirements.txt`는 반드시 UTF-8(BOM 없음)으로 저장할 것.**
+   PowerShell의 `>` 리다이렉트와 `Set-Content` 기본 인코딩은 UTF-16LE다.
+   Git은 UTF-16 `.gitignore`를 파싱하지 못해 **모든 무시 규칙이 무효화**되고,
+   pip는 UTF-16 `requirements.txt`를 읽지 못해 배포가 실패한다.
+   실제로 이 문제로 `venv/` 17,581개 파일과 `.env`가 커밋된 이력이 있다.
+
+2. **시크릿을 코드·문서에 절대 적지 말 것.** 과거 이 파일과 `.env`에
+   실제 API 키가 평문으로 커밋·푸시된 적이 있다(해당 키는 폐기됨).
+   설정값을 로그로 출력하는 `print()`도 금지한다.
+
+3. **커밋 전 `git status`로 추적 파일 수를 확인할 것.** 정상 상태의 추적 파일은 약 40개다.
