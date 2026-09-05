@@ -8,14 +8,46 @@ export const getAuthHeaders = () => {
   };
 };
 
+/**
+ * 상태 코드를 잃지 않도록 status를 실어 보낸다.
+ * (호출부에서 err.message 문자열로 401을 판별하면 DRF의 {"detail": ...} 응답과
+ *  맞지 않아 세션 만료를 놓치게 된다.)
+ */
+export class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.isAuthError = status === 401 || status === 403;
+  }
+}
+
 const handleResponse = async (res) => {
   if (res.status === 204) return null;
-  const data = await res.json();
-  if (!res.ok) {
-    const message = data.error || data.detail || Object.values(data)[0] || '요청에 실패했습니다.';
-    throw new Error(Array.isArray(message) ? message[0] : message);
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
   }
+
+  if (!res.ok) {
+    const raw = data
+      ? data.error || data.detail || Object.values(data)[0]
+      : `요청에 실패했습니다. (HTTP ${res.status})`;
+    const message = Array.isArray(raw) ? raw[0] : raw;
+    throw new ApiError(message || `요청에 실패했습니다. (HTTP ${res.status})`, res.status);
+  }
+
   return data;
+};
+
+/** 인증 만료 시 토큰을 정리한다. 호출부는 err.isAuthError로 분기하면 된다. */
+export const clearSession = () => {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('username');
 };
 
 export const api = {
@@ -67,10 +99,7 @@ export const api = {
     fetch(`${API_BASE}/api/roadmaps/roadmaps/${id}/`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
-    }).then((res) => {
-      if (!res.ok) throw new Error('삭제에 실패했습니다.');
-      return true;
-    }),
+    }).then(handleResponse),
 
   updateRoadmapStatus: (id, status) =>
     fetch(`${API_BASE}/api/roadmaps/roadmaps/${id}/`, {

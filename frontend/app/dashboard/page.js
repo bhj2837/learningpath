@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/api'
+import { api, clearSession } from '@/lib/api'
 
 const CATEGORY_COLORS = {
   '개발': 'bg-blue-100 text-blue-700',
@@ -96,6 +96,7 @@ export default function DashboardPage() {
   const [roadmaps, setRoadmaps] = useState([])
   const [loading, setLoading] = useState(true)
   const [username, setUsername] = useState('')
+  const [error, setError] = useState('')
 
   useEffect(() => {
     const token = localStorage.getItem('authToken')
@@ -109,10 +110,12 @@ export default function DashboardPage() {
       const data = await api.getRoadmaps()
       setRoadmaps(Array.isArray(data) ? data : data.results || [])
     } catch (err) {
-      if (err.message?.includes('401') || err.message?.includes('인증')) {
-        localStorage.removeItem('authToken')
+      if (err.isAuthError) {
+        clearSession()
         router.push('/auth')
+        return
       }
+      setError(err.message || '로드맵을 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
@@ -120,8 +123,7 @@ export default function DashboardPage() {
 
   const handleLogout = async () => {
     await api.logout().catch(() => {})
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('username')
+    clearSession()
     router.push('/')
   }
 
@@ -170,6 +172,12 @@ export default function DashboardPage() {
             <span>새 로드맵 생성</span>
           </Link>
         </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm mb-6">
+            {error}
+          </div>
+        )}
 
         {/* Roadmaps Grid */}
         {roadmaps.length === 0 ? (

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/api'
+import { api, clearSession } from '@/lib/api'
 
 const RESOURCE_ICONS = {
   video: '📹',
@@ -148,7 +148,12 @@ export default function RoadmapDetailPage() {
     try {
       const data = await api.getRoadmap(params.id)
       setRoadmap(data)
-    } catch {
+    } catch (err) {
+      if (err.isAuthError) {
+        clearSession()
+        router.push('/auth')
+        return
+      }
       router.push('/dashboard')
     } finally {
       setLoading(false)

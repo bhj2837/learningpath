@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/api'
+import { api, clearSession } from '@/lib/api'
 
 const CATEGORIES = ['개발', '디자인', '언어', '비즈니스', '기타']
 const DURATIONS = [2, 4, 6, 8, 12, 16]
@@ -69,6 +69,11 @@ export default function CreatePage() {
       const roadmap = await api.generateRoadmap(form)
       router.push(`/roadmaps/${roadmap.id}`)
     } catch (err) {
+      if (err.isAuthError) {
+        clearSession()
+        router.push('/auth')
+        return
+      }
       setError(err.message || '로드맵 생성에 실패했습니다. 다시 시도해주세요.')
       setLoading(false)
     }
