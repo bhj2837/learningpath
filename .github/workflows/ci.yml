@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  guards:
+    name: 저장소 위생 검사
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 과거 .gitignore / requirements.txt 가 UTF-16으로 저장되어
+      # 무시 규칙이 통째로 무효화되고 배포가 깨진 이력이 있다.
+      - name: 텍스트 설정 파일이 UTF-8인지 확인
+        run: |
+          for f in .gitignore backend/requirements.txt .env.example; do
+            if [ -f "$f" ] && ! iconv -f UTF-8 -t UTF-8 "$f" > /dev/null 2>&1; then
+              echo "::error file=$f::UTF-8이 아닙니다. PowerShell '>' 리다이렉트로 저장하지 마세요."
+              exit 1
+            fi
+          done
+
+      - name: 커밋되면 안 되는 파일 검사
+        run: |
+          if git ls-files | grep -E '(^|/)(venv|node_modules)/|(^|/)\.env$|\.pyc$|db\.sqlite3$' ; then
+            echo "::error::가상환경/시크릿/DB 파일이 추적되고 있습니다."
+            exit 1
+          fi
+
+      - name: 시크릿 패턴 검사
+        run: |
+          if git grep -nIE 'sk-ant-[A-Za-z0-9_-]{20,}' -- . ; then
+            echo "::error::소스에 API 키가 포함되어 있습니다."
+            exit 1
+          fi
+
+  backend:
+    name: 백엔드 테스트
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: 의존성 설치
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: 미적용 마이그레이션 확인
+        working-directory: backend
+        env:
+          DJANGO_DEBUG: 'True'
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: 테스트
+        working-directory: backend
+        env:
+          DJANGO_DEBUG: 'True'
+        run: python manage.py test --verbosity 2
+
+      - name: 배포 설정 점검
+        working-directory: backend
+        env:
+          DJANGO_DEBUG: 'False'
+          DJANGO_SECRET_KEY: ${{ github.sha }}-ci-only-not-a-real-secret-key-padding
+          ALLOWED_HOSTS: example.com
+        run: python manage.py check --deploy --fail-level WARNING
+
+  frontend:
+    name: 프론트엔드 빌드
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 의존성 설치
+        working-directory: frontend
+        run: npm ci
+
+      - name: 빌드
+        working-directory: frontend
+        run: npm run build
