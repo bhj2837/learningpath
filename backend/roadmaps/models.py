@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator
 from django.db import models
 
 
@@ -13,8 +14,10 @@ class Roadmap(models.Model):
     title = models.CharField(max_length=200)
     goal = models.TextField()
     category = models.CharField(max_length=50)
-    duration_weeks = models.IntegerField()
-    daily_hours = models.DecimalField(max_digits=4, decimal_places=2)
+    duration_weeks = models.IntegerField(validators=[MinValueValidator(1)])
+    daily_hours = models.DecimalField(
+        max_digits=4, decimal_places=2, validators=[MinValueValidator(0)]
+    )
     current_level = models.CharField(max_length=50)
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="in_progress"
@@ -24,6 +27,7 @@ class Roadmap(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "-created_at"])]
 
     def __str__(self) -> str:
         return f"{self.title} ({self.user.username})"
@@ -33,15 +37,20 @@ class Week(models.Model):
     roadmap = models.ForeignKey(
         Roadmap, on_delete=models.CASCADE, related_name="weeks"
     )
-    week_number = models.IntegerField()
+    week_number = models.IntegerField(validators=[MinValueValidator(1)])
     title = models.CharField(max_length=200)
     description = models.TextField()
-    estimated_hours = models.IntegerField()
+    estimated_hours = models.IntegerField(validators=[MinValueValidator(0)])
     resources = models.JSONField(default=list)
     project_suggestion = models.TextField(blank=True)
 
     class Meta:
         ordering = ["week_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["roadmap", "week_number"], name="unique_week_per_roadmap"
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.roadmap.title} - Week {self.week_number}: {self.title}"
@@ -54,7 +63,7 @@ class Checklist(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["-completed_at", "id"]
+        ordering = ["id"]
 
     def __str__(self) -> str:
         return self.content
@@ -65,14 +74,18 @@ class Progress(models.Model):
         Roadmap, on_delete=models.CASCADE, related_name="progress"
     )
     date = models.DateField()
-    hours_studied = models.DecimalField(max_digits=4, decimal_places=2)
+    hours_studied = models.DecimalField(
+        max_digits=4, decimal_places=2, validators=[MinValueValidator(0)]
+    )
     notes = models.TextField(blank=True)
 
     class Meta:
         ordering = ["-date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["roadmap", "date"], name="unique_progress_per_day"
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.roadmap.title} - {self.date}"
-from django.db import models
-
-# Create your models here.
